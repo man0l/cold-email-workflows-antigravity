@@ -157,15 +157,19 @@ def find_email_anymailfinder(first_name: str, last_name: str, domain: str, api_k
     """
     url = "https://api.anymailfinder.com/v5.0/search/person.json"
     
-    params = {
+    headers = {
+        'Authorization': api_key,
+        'Content-Type': 'application/json'
+    }
+    
+    payload = {
         'first_name': first_name,
         'last_name': last_name,
-        'domain': domain,
-        'api_key': api_key
+        'domain': domain
     }
     
     try:
-        response = requests.get(url, params=params, timeout=30)
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
         response.raise_for_status()
         
         data = response.json()
@@ -174,7 +178,7 @@ def find_email_anymailfinder(first_name: str, last_name: str, domain: str, api_k
             print(f"  API Response: {json.dumps(data, indent=2)}")
         
         # Check if email was found
-        if data.get('status') == 'success' and data.get('email'):
+        if data.get('success') and data.get('email'):
             email = data.get('email')
             confidence = data.get('confidence', 0)
             verified = data.get('verified', False)

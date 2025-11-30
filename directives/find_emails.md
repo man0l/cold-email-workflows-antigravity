@@ -154,9 +154,15 @@ Find and enrich leads with email addresses using AnyMailFinder API. Accepts clea
 
 ## API Response Format
 
-AnyMailFinder API returns data in the following format:
+AnyMailFinder API v5.0 uses the following authentication:
+- **Method**: POST
+- **Authentication**: API key via `Authorization` header
+- **Request Body**: JSON with `first_name`, `last_name`, and `domain` fields
+
+Response format:
 ```json
 {
+  "success": true,
   "email": "john.doe@company.com",
   "first_name": "John",
   "last_name": "Doe",
