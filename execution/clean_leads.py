@@ -168,7 +168,8 @@ def check_not_keywords(lead: Dict[str, Any], not_keywords: List[str]) -> bool:
         'description', 'industry', 'tagline',
         # Snake case variants
         'company_name', 'company_description', 'company_industry',
-        'company_tagline', 'person_headline', 'job_title'
+        'company_tagline', 'person_headline', 'job_title',
+        'keywords'
     ]
     
     # Combine all searchable text
