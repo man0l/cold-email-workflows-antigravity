@@ -138,7 +138,8 @@ def check_keywords(lead: Dict[str, Any], keywords: List[str]) -> bool:
         'description', 'industry', 'tagline',
         # Snake case variants (common in Apify exports)
         'company_name', 'company_description', 'company_industry',
-        'company_tagline', 'person_headline', 'job_title'
+        'company_tagline', 'person_headline', 'job_title',
+        'keywords' # Apify keywords field
     ]
     
     # Combine all searchable text
