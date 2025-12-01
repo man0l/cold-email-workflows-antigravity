@@ -287,9 +287,24 @@ The script will find the `website` field from Google Maps output and use it to s
 - You want email verification scores
 - You're doing personalized outreach to individuals
 
+## Setup
+
+Before running the script, ensure you have:
+
+1. **Outscraper API Key**: Get your free API key from https://app.outscraper.com/profile
+2. **Add to .env file**:
+   ```bash
+   OUTSCRAPER_API_KEY=your_api_key_here
+   ```
+3. **Install dependencies** (already done if you've installed requirements):
+   ```bash
+   pip install outscraper
+   ```
+
 ## Troubleshooting
 
-- **Error: OUTSCRAPER_API_KEY not found**: Add your API key to the `.env` file
+- **Error: OUTSCRAPER_API_KEY not found**: Add your API key to the `.env` file (see Setup section above)
+- **Error: Outscraper library not installed**: Run `pip install outscraper` in your virtual environment
 - **Error: Missing required fields**: Ensure leads have a company domain/website
 - **No emails found**: The domain may not have publicly listed emails - common for privacy-focused companies
 - **Rate limit errors**: The script includes automatic retry with exponential backoff
