@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 APIFY_API_KEY = os.getenv("APIFY_API_KEY")
-ACTOR_ID = "compass/crawler-google-places"
+ACTOR_ID = "compass~crawler-google-places"  # Note: Use tilde (~) for API calls, not slash (/)
 
 def scrape_google_maps(search_terms, max_results, language="en", scrape_reviews=False, scrape_images=False, output_file=".tmp/google_maps_leads.json"):
     """
