@@ -151,17 +151,17 @@ def get_field_value(lead: Dict[str, Any], *possible_keys: str) -> str:
 def find_email_anymailfinder(first_name: str, last_name: str, domain: str, api_key: str, verbose: bool = False) -> Tuple[Optional[str], Optional[int], Optional[bool]]:
     """
     Call AnyMailFinder API to find email address.
-    
+
     Returns:
         (email, confidence, verified) or (None, None, None) if not found
     """
-    url = "https://api.anymailfinder.com/v5.0/search/person.json"
-    
+    url = "https://api.anymailfinder.com/v5.1/find-email/person"
+
     headers = {
         'Authorization': api_key,
         'Content-Type': 'application/json'
     }
-    
+
     payload = {
         'first_name': first_name,
         'last_name': last_name,

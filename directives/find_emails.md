@@ -154,8 +154,9 @@ Find and enrich leads with email addresses using AnyMailFinder API. Accepts clea
 
 ## API Response Format
 
-AnyMailFinder API v5.0 uses the following authentication:
+AnyMailFinder API v5.1 uses the following authentication:
 - **Method**: POST
+- **Endpoint**: `https://api.anymailfinder.com/v5.1/find-email/person`
 - **Authentication**: API key via `Authorization` header
 - **Request Body**: JSON with `first_name`, `last_name`, and `domain` fields
 
