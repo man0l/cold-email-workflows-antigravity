@@ -194,9 +194,16 @@ def find_contacts_outscraper(domain: str, client: ApiClient, verbose: bool = Fal
         return {}
 
 
-def enrich_leads(leads: List[Dict[str, Any]], max_leads: int, skip_existing: bool = True, verbose: bool = False) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+def enrich_leads(leads: List[Dict[str, Any]], max_leads: int, skip_existing: bool = True, full_contact_info: bool = False, verbose: bool = False) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     """
     Enrich leads with contact information using Outscraper API.
+
+    Args:
+        leads: List of lead dictionaries
+        max_leads: Maximum number of leads to process
+        skip_existing: Skip leads that already have emails
+        full_contact_info: If True, adds all emails, phones, and social media. If False, only primary email.
+        verbose: Show detailed progress
 
     Returns:
         (enriched_leads, stats)
@@ -271,39 +278,46 @@ def enrich_leads(leads: List[Dict[str, Any]], max_leads: int, skip_existing: boo
         found_something = False
 
         if contact_info:
-            # Emails
+            # Emails - ALWAYS add primary email
             emails = contact_info.get('emails', [])
             if emails:
-                lead['email'] = emails[0]  # Primary email
-                lead['all_emails'] = emails  # All emails
+                lead['email'] = emails[0]  # Primary email (always added)
                 stats['emails_found'] += 1
                 found_something = True
-                if verbose:
-                    print(f"  ✅ Emails: {', '.join(emails[:3])}{'...' if len(emails) > 3 else ''}")
 
-            # Phones
-            phones = contact_info.get('phones', [])
-            if phones:
-                lead['phone'] = phones[0]  # Primary phone
-                lead['all_phones'] = phones  # All phones
-                stats['phones_found'] += 1
-                found_something = True
                 if verbose:
-                    print(f"  📞 Phones: {', '.join(phones[:3])}{'...' if len(phones) > 3 else ''}")
+                    print(f"  ✅ Email: {emails[0]}")
 
-            # Social media links
-            social_links = []
-            for platform in ['facebook', 'linkedin', 'twitter', 'instagram', 'youtube']:
-                link = contact_info.get(platform, '')
-                if link:
-                    lead[f'{platform}_url'] = link
-                    social_links.append(platform)
+                # Only add additional fields if full_contact_info flag is set
+                if full_contact_info:
+                    lead['all_emails'] = emails  # All emails
+                    if verbose and len(emails) > 1:
+                        print(f"     Additional emails: {', '.join(emails[1:3])}{'...' if len(emails) > 3 else ''}")
+
+            # Phones - ONLY if full_contact_info is enabled
+            if full_contact_info:
+                phones = contact_info.get('phones', [])
+                if phones:
+                    lead['phone'] = phones[0]  # Primary phone
+                    lead['all_phones'] = phones  # All phones
+                    stats['phones_found'] += 1
                     found_something = True
+                    if verbose:
+                        print(f"  📞 Phones: {', '.join(phones[:3])}{'...' if len(phones) > 3 else ''}")
 
-            if social_links:
-                stats['socials_found'] += 1
-                if verbose:
-                    print(f"  🔗 Social: {', '.join(social_links)}")
+                # Social media links - ONLY if full_contact_info is enabled
+                social_links = []
+                for platform in ['facebook', 'linkedin', 'twitter', 'instagram', 'youtube']:
+                    link = contact_info.get(platform, '')
+                    if link:
+                        lead[f'{platform}_url'] = link
+                        social_links.append(platform)
+                        found_something = True
+
+                if social_links:
+                    stats['socials_found'] += 1
+                    if verbose:
+                        print(f"  🔗 Social: {', '.join(social_links)}")
 
         if not found_something:
             stats['not_found'] += 1
@@ -430,7 +444,7 @@ def ask_permission(leads: List[Dict[str, Any]], max_leads: int, skip_existing: b
     print("\n✅ Starting enrichment...")
 
 
-def print_stats(stats: Dict[str, int]):
+def print_stats(stats: Dict[str, int], full_contact_info: bool = False):
     """Print enrichment statistics"""
     print("\n" + "=" * 50)
     print("✅ Email Enrichment Summary")
@@ -439,14 +453,18 @@ def print_stats(stats: Dict[str, int]):
     total_processed = stats['processed']
     if total_processed > 0:
         emails_pct = int((stats['emails_found'] / total_processed) * 100)
-        phones_pct = int((stats['phones_found'] / total_processed) * 100)
-        socials_pct = int((stats['socials_found'] / total_processed) * 100)
         not_found_pct = int((stats['not_found'] / total_processed) * 100)
 
         print(f"  Emails found: {stats['emails_found']} ({emails_pct}%)")
-        print(f"  Phones found: {stats['phones_found']} ({phones_pct}%)")
-        print(f"  Social links found: {stats['socials_found']} ({socials_pct}%)")
-        print(f"  No info found: {stats['not_found']} ({not_found_pct}%)")
+
+        # Only show phone/social stats if full_contact_info was enabled
+        if full_contact_info:
+            phones_pct = int((stats['phones_found'] / total_processed) * 100)
+            socials_pct = int((stats['socials_found'] / total_processed) * 100)
+            print(f"  Phones found: {stats['phones_found']} ({phones_pct}%)")
+            print(f"  Social links found: {stats['socials_found']} ({socials_pct}%)")
+
+        print(f"  No email found: {stats['not_found']} ({not_found_pct}%)")
 
     if stats['skipped_existing'] > 0:
         print(f"  Skipped (had email): {stats['skipped_existing']}")
@@ -475,6 +493,7 @@ def main():
     parser.add_argument('--max-leads', type=int, default=100, help='Maximum number of leads to process (default: 100)')
     parser.add_argument('--sheet-name', help='Sheet name to read from (for Google Sheets source)')
     parser.add_argument('--include-existing', action='store_true', help='Process ALL leads including those that already have emails (by default, only empty emails are enriched)')
+    parser.add_argument('--full-contact-info', action='store_true', help='Include ALL contact fields (all_emails, phones, social media). By default, only primary email is added.')
     parser.add_argument('--verbose', '-v', action='store_true', help='Show detailed progress')
 
     args = parser.parse_args()
@@ -500,10 +519,10 @@ def main():
     ask_permission(leads, args.max_leads, skip_existing)
 
     # Enrich leads
-    enriched_leads, stats = enrich_leads(leads, args.max_leads, skip_existing, args.verbose)
+    enriched_leads, stats = enrich_leads(leads, args.max_leads, skip_existing, args.full_contact_info, args.verbose)
 
     # Print stats
-    print_stats(stats)
+    print_stats(stats, args.full_contact_info)
 
     # Save output
     if args.output:

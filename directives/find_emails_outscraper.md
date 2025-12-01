@@ -93,6 +93,7 @@ Find and enrich leads with email addresses, phone numbers, and social media link
 - `--verbose` or `-v`: Display detailed information for each API call
 - `--sheet-name "Sheet1"`: Specify source sheet name when using Google Sheets (default: first sheet)
 - `--include-existing`: Process ALL leads including those with existing emails (by default, only leads with empty emails are enriched)
+- `--full-contact-info`: Include ALL contact data (all_emails array, phones, social media). **By default, ONLY the primary email is added.**
 
 ### Example Workflow
 
@@ -159,7 +160,8 @@ Find and enrich leads with email addresses, phone numbers, and social media link
    ```
 
 4. **Review results**:
-   The script will show:
+
+   **Default output (email only)**:
    ```
    📧 Email Enrichment Tool (Outscraper)
    ==================================================
@@ -181,11 +183,19 @@ Find and enrich leads with email addresses, phone numbers, and social media link
    ✅ Email Enrichment Summary:
       Emails found: 72 (83%)
       No email found: 15 (17%)
-      Phones found: 68 (78%)
-      Social links found: 54 (62%)
       Total processed: 87
 
    Saved to: .tmp/enriched_leads.json
+   ```
+
+   **With --full-contact-info flag** (includes phones and social):
+   ```
+   ✅ Email Enrichment Summary:
+      Emails found: 72 (83%)
+      Phones found: 68 (78%)
+      Social links found: 54 (62%)
+      No email found: 15 (17%)
+      Total processed: 87
    ```
 
 ## API Details
@@ -223,8 +233,10 @@ Outscraper returns comprehensive contact data including:
 }
 ```
 
-The script enriches leads with:
-- `email`: Primary email address (first found)
+**By default**, the script enriches leads with:
+- `email`: Primary email address (first found) ✅ **ALWAYS ADDED**
+
+**With `--full-contact-info` flag**, the script also adds:
 - `all_emails`: List of all found email addresses
 - `phone`: Primary phone number (first found)
 - `all_phones`: List of all found phone numbers
@@ -267,10 +279,11 @@ The script will find the `website` field from Google Maps output and use it to s
 ## Advantages Over AnyMailFinder
 
 1. **Free Tier**: 500 free domains per month (vs paid-only for AnyMailFinder)
-2. **More Contact Data**: Finds emails, phones, AND social media links (vs emails only)
+2. **More Contact Data**: Can find emails, phones, AND social media links (vs emails only)
 3. **No Name Required**: Only needs company domain (vs first name + last name + domain)
-4. **Multiple Emails**: Returns all found emails, not just one
+4. **Multiple Emails**: Can return all found emails (with `--full-contact-info` flag)
 5. **Public Data**: Extracts from websites, Google, Facebook, LinkedIn, etc.
+6. **Cleaner Output**: By default, only adds primary email (keeps data clean)
 
 ## When to Use Outscraper vs AnyMailFinder
 
@@ -318,7 +331,8 @@ Before running the script, ensure you have:
 - Empty or invalid responses from Outscraper leave the email field empty
 - Progress bar shows real-time processing status
 - All errors are logged with details for debugging
-- Multiple emails are stored in `all_emails` array field
+- **By default, ONLY the primary `email` field is added** (clean output)
+- Use `--full-contact-info` to add `all_emails`, `phone`, `all_phones`, and social media URLs
 - Social media links are only added if found (fields may be empty)
 
 ## API Documentation
