@@ -77,8 +77,28 @@ def export_data_to_sheets(data, sheet_name, folder_id=None, target_spreadsheet_i
 
     # 2. Prepare Data
     # Flatten data if necessary (simple flattening for now)
-    # Assuming data is a list of dicts. We'll take keys from the first item as headers.
-    headers = list(data[0].keys())
+    # Flatten data if necessary (simple flattening for now)
+    # Collect all unique keys from all items to ensure we don't miss columns
+    headers = set()
+    for item in data:
+        headers.update(item.keys())
+    headers = sorted(list(headers))
+    
+    # Ensure specific order if desired (e.g., company_name first, email second)
+    # For now, just sorted is fine, or we can prioritize some common ones
+    priority_headers = [
+        "First Name", "Last Name", "Title", "Company Name", "Email", "Company Phone", "Company Website",
+        "City", "State", "Country", "Company City", "Company State", "Company Country",
+        "Company Address", "Industry", "Company Linkedin Url"
+    ]
+    sorted_headers = []
+    for h in priority_headers:
+        if h in headers:
+            sorted_headers.append(h)
+            headers.remove(h)
+    sorted_headers.extend(headers)
+    headers = sorted_headers
+
     rows = [headers]
     for item in data:
         row = [str(item.get(k, "")) for k in headers]

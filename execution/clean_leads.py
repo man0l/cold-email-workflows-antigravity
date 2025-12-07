@@ -215,6 +215,7 @@ def get_company_name(lead: Dict[str, Any]) -> str:
         lead.get('companyName') or 
         lead.get('company_name') or 
         lead.get('company') or 
+        lead.get('Company Name') or
         'Unknown'
     )
 
@@ -227,7 +228,10 @@ def check_website(lead: Dict[str, Any]) -> bool:
         lead.get('website') or
         lead.get('companyDomain') or
         lead.get('company_domain') or
-        lead.get('domain')
+        lead.get('domain') or
+        # Title Case Apollo format
+        lead.get('Company Website') or
+        lead.get('Company Domain')
     )
     
     if website and str(website).strip() and str(website).lower() != 'none':
@@ -239,22 +243,84 @@ def extract_domain(url: str) -> str:
     """Extract domain from URL or email string"""
     if not url:
         return ''
-    
+
     s = str(url).lower().strip()
-    
+
     # Remove protocol
     if '://' in s:
         s = s.split('://')[1]
-    
+
     # Remove path
     if '/' in s:
         s = s.split('/')[0]
-    
+
     # Remove www.
     if s.startswith('www.'):
         s = s[4:]
-        
+
     return s
+
+
+def clean_url(url: str) -> str:
+    """
+    Clean URL by removing query parameters, fragments, and paths to get just the homepage.
+    Converts URLs like:
+      - https://example.com/path?utm_source=google&utm_campaign=gmb -> https://example.com
+      - http://example.com/page/?param=value -> http://example.com
+      - example.com/page?foo=bar#section -> https://example.com
+      - tilsonhomes.com/new-homes/tx/waco/ -> https://tilsonhomes.com
+    """
+    if not url:
+        return ''
+
+    url_str = str(url).strip()
+    if not url_str:
+        return ''
+
+    # Parse the URL to extract components
+    from urllib.parse import urlparse, urlunparse
+
+    try:
+        # Add protocol if missing (needed for proper parsing)
+        if not url_str.startswith(('http://', 'https://')):
+            url_str = 'https://' + url_str
+
+        parsed = urlparse(url_str)
+
+        # Rebuild URL with only scheme and netloc (domain) - no path, query, or fragment
+        # urlunparse takes: (scheme, netloc, path, params, query, fragment)
+        cleaned = urlunparse((
+            parsed.scheme,
+            parsed.netloc,
+            '',  # path (remove to get homepage only)
+            '',  # params (rarely used)
+            '',  # query (remove)
+            ''   # fragment (remove)
+        ))
+
+        return cleaned
+    except Exception:
+        # If parsing fails, return original URL
+        return url_str
+
+
+def clean_lead_urls(lead: Dict[str, Any]) -> None:
+    """
+    Clean all URL fields in a lead by removing query parameters and fragments.
+    Modifies the lead in place.
+    """
+    # Fields that typically contain URLs
+    url_fields = [
+        'companyWebsite', 'company_website', 'website',
+        'companyDomain', 'company_domain', 'domain',
+        'url', 'website_url', 'site_url',
+        # Title Case Apollo format
+        'Company Website', 'Company Domain'
+    ]
+
+    for field in url_fields:
+        if field in lead and lead[field]:
+            lead[field] = clean_url(lead[field])
 
 
 def verify_email_match(lead: Dict[str, Any]) -> bool:
@@ -266,25 +332,28 @@ def verify_email_match(lead: Dict[str, Any]) -> bool:
     # Get email
     email_field = None
     email = None
-    for field in ['email', 'emailAddress', 'contact_email', 'workEmail']:
+    for field in ['email', 'emailAddress', 'contact_email', 'workEmail', 'Email']:
         if lead.get(field):
             email = lead.get(field)
             email_field = field
             break
-            
+
     if not email or '@' not in str(email):
         return True
 
     # Get website
     website = (
-        lead.get('companyWebsite') or 
-        lead.get('company_website') or 
+        lead.get('companyWebsite') or
+        lead.get('company_website') or
         lead.get('website') or
         lead.get('companyDomain') or
         lead.get('company_domain') or
-        lead.get('domain')
+        lead.get('domain') or
+        # Title Case Apollo format
+        lead.get('Company Website') or
+        lead.get('Company Domain')
     )
-    
+
     if not website:
         return True
 
@@ -292,20 +361,20 @@ def verify_email_match(lead: Dict[str, Any]) -> bool:
     try:
         email_domain = extract_domain(str(email).split('@')[1])
         website_domain = extract_domain(str(website))
-        
+
         if not email_domain or not website_domain:
             return True
-            
+
         if email_domain != website_domain:
             # Mismatch - clear all email fields
             for field in ['email', 'emailAddress', 'contact_email', 'workEmail', 'personalEmail']:
                 if field in lead:
                     lead[field] = ''
             return False
-            
+
     except Exception:
         return True
-        
+
     return True
 
 
@@ -334,10 +403,13 @@ def clean_leads(
     }
     
     cleaned = []
-    
+
     for lead in leads:
+        # Clean URLs first (remove query parameters)
+        clean_lead_urls(lead)
+
         company_name = get_company_name(lead)
-        
+
         # Filter 1: Check positive keywords
         if not check_keywords(lead, keywords):
             if verbose:

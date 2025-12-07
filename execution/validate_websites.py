@@ -134,6 +134,9 @@ def get_website_url(lead: Dict[str, Any]) -> str:
         lead.get('companyDomain') or
         lead.get('company_domain') or
         lead.get('domain') or
+        # Title Case Apollo format
+        lead.get('Company Website') or
+        lead.get('Company Domain') or
         ''
     )
     

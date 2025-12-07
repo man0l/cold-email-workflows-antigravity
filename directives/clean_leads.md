@@ -13,18 +13,22 @@ Filter and clean leads from a spreadsheet or scraped JSON file based on keyword 
 
 ## Algorithm
 1.  **Load Data**: Reads leads from a JSON file or Google Sheet.
-2.  **Filter**:
+2.  **Clean URLs**: Removes query parameters, fragments, and paths from all website URLs to get just the homepage/domain. This ensures you get clean homepage URLs without tracking parameters or subpages.
+    *   Example: `https://tilsonhomes.com/new-homes/tx/waco/9062/?utm_source=google` → `https://tilsonhomes.com`
+    *   Example: `https://kurkhomes.com/?utm_campaign=gmb` → `https://kurkhomes.com`
+    *   Example: `ubh.com/design-center/dallas-tx/` → `https://ubh.com`
+3.  **Filter**:
     *   **Keywords**: Keeps leads matching *at least one* positive keyword (if provided).
     *   **Negative Keywords**: Removes leads matching *any* negative keyword.
     *   **Industries**: Keeps leads matching *at least one* target industry (if provided).
     *   **Website Check**: Removes leads without a valid website/domain (enabled by default, use `--no-require-website` to disable).
     *   **Email Domain Check**: Compares the email domain with the website domain. If they differ (e.g., `john@gmail.com` vs `company.com`), the email field is **cleared** (removed), but the lead is kept.
-3.  **Validate Websites**: After filtering, validates all remaining websites in parallel:
+4.  **Validate Websites**: After filtering, validates all remaining websites in parallel:
     *   Makes HTTP requests to check availability
     *   Detects SSL certificate errors
     *   Detects Cloudflare/CloudFront blocks
     *   **Removes** any lead where the website is not `valid` (200 OK). Leads with SSL errors, timeouts, blocks, or invalid status codes are discarded.
-4.  **Output**: Saves the filtered and validated leads to a new file or sheet (without internal status columns).
+5.  **Output**: Saves the filtered and validated leads to a new file or sheet (without internal status columns).
 
 ## Tools
 - `execution/clean_leads.py` - Main lead cleaning script
@@ -178,3 +182,9 @@ If your data **lacks** `companyDescription` or `companyTagline`:
 - Leads are processed in the order they appear in the source
 - The output file can be used as input to other scripts (e.g., `export_to_sheets.py`)
 - If both `--source-url` and `--source-file` are provided, the script will error
+- **URL Cleaning**: All website URLs are automatically cleaned to extract just the homepage/domain, removing:
+  - Paths (e.g., `/new-homes/tx/waco/`)
+  - Query parameters (e.g., `?utm_source=google&utm_campaign=gmb`)
+  - Fragments (e.g., `#section`)
+
+  This is especially useful for Google Maps leads which often include subpages and GMB tracking parameters. The result is always just the clean homepage URL (e.g., `https://example.com`).

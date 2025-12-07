@@ -39,7 +39,8 @@ def scrape_google_maps(search_terms, max_results, language="en", scrape_reviews=
     # See: https://apify.com/compass/crawler-google-places/input-schema
     actor_input = {
         "searchStringsArray": search_terms,
-        "maxCrawledPlacesPerSearch": max_results,
+        "maxCrawledPlaces": max_results,  # Total limit across ALL searches
+        "maxCrawledPlacesPerSearch": max_results,  # Limit per individual search term
         "language": language,
         "includeReviews": scrape_reviews,
         "includeImages": scrape_images,
@@ -63,7 +64,9 @@ def scrape_google_maps(search_terms, max_results, language="en", scrape_reviews=
     print()
 
     # Start the actor run
-    url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={APIFY_API_KEY}"
+    # Note: API uses ~ instead of / in actor ID
+    actor_id_for_api = ACTOR_ID.replace("/", "~")
+    url = f"https://api.apify.com/v2/acts/{actor_id_for_api}/runs?token={APIFY_API_KEY}"
 
     print("Starting Apify actor run...")
     response = requests.post(url, json=actor_input)
@@ -89,7 +92,7 @@ def scrape_google_maps(search_terms, max_results, language="en", scrape_reviews=
     poll_count = 0
 
     while True:
-        status_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs/{run_id}?token={APIFY_API_KEY}"
+        status_url = f"https://api.apify.com/v2/acts/{actor_id_for_api}/runs/{run_id}?token={APIFY_API_KEY}"
         status_response = requests.get(status_url)
         status_response.raise_for_status()
         status_data = status_response.json()["data"]

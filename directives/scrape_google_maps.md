@@ -218,6 +218,7 @@ Export the scraped leads to a Google Sheet in the Shared Drive folder.
 After scraping Google Maps leads, you may want to:
 
 1. **Clean and Filter**: Use `directives/clean_leads.md` to filter by keywords, validate websites, etc.
+   - **Important**: The clean_leads script will automatically clean all URLs to extract just the homepage (domain only), removing subpages, tracking parameters (like `?utm_source=google&utm_campaign=gmb`), and fragments. For example, `https://tilsonhomes.com/new-homes/tx/waco/?utm_campaign=gmb` becomes `https://tilsonhomes.com`.
 2. **Find Emails**: Use `directives/find_emails.md` to enrich leads with email addresses.
 3. **Deduplicate**: Remove duplicate businesses if you ran multiple overlapping searches.
 4. **Enrich Data**: Add additional fields like company size, industry, social media profiles using other tools.
