@@ -187,18 +187,18 @@ def query_company_ads_for_periods(
         results['all_time'] = result.get('ads_count', 0)
     
     # Query 2: Last 1 month
-    task_id = post_tasks_bulk_to_dataforseo([company_name], login, password, location, "en", one_month_ago, today, verbose)
-    if task_id and task_id[0]:
-        time.sleep(3)
-        result = get_task_result_from_dataforseo(task_id[0], login, password, verbose=verbose)
-        results['one_month'] = result.get('ads_count', 0)
+    # task_id = post_tasks_bulk_to_dataforseo([company_name], login, password, location, "en", one_month_ago, today, verbose)
+    # if task_id and task_id[0]:
+    #     time.sleep(3)
+    #     result = get_task_result_from_dataforseo(task_id[0], login, password, verbose=verbose)
+    #     results['one_month'] = result.get('ads_count', 0)
     
     # Query 3: Last 3 months
-    task_id = post_tasks_bulk_to_dataforseo([company_name], login, password, location, "en", three_months_ago, today, verbose)
-    if task_id and task_id[0]:
-        time.sleep(3)
-        result = get_task_result_from_dataforseo(task_id[0], login, password, verbose=verbose)
-        results['three_months'] = result.get('ads_count', 0)
+    # task_id = post_tasks_bulk_to_dataforseo([company_name], login, password, location, "en", three_months_ago, today, verbose)
+    # if task_id and task_id[0]:
+    #     time.sleep(3)
+    #     result = get_task_result_from_dataforseo(task_id[0], login, password, verbose=verbose)
+    #     results['three_months'] = result.get('ads_count', 0)
     
     return results
 
@@ -496,7 +496,6 @@ def analyze_leads(
         if not gtm_ads_detected:
             # Skip leads without GTM ads detection - mark as skipped
             lead['dataforseo_google_ads_detected'] = ''
-            lead['ads_count'] = ''
             lead['ads_position'] = ''
             lead['competitor_ads'] = ''
             lead['dataforseo_status'] = 'skipped_no_gtm_tracking'
@@ -509,7 +508,6 @@ def analyze_leads(
         if not company_name:
             # Has GTM tracking but no company name
             lead['dataforseo_google_ads_detected'] = ''
-            lead['ads_count'] = ''
             lead['ads_position'] = ''
             lead['competitor_ads'] = ''
             lead['dataforseo_status'] = 'no_company_name'
@@ -545,8 +543,8 @@ def analyze_leads(
             print(f"  - {skipped_no_domain_count} leads have GTM tracking but no website domain")
         return leads
 
-    # Calculate cost (3x since we query 3 time periods per lead)
-    estimated_cost = analyzable_count * COST_PER_REQUEST * 3
+    # Calculate cost (1x since we query only all-time)
+    estimated_cost = analyzable_count * COST_PER_REQUEST * 1
 
     # Display cost estimate
     print(f"\n{'='*60}")
@@ -558,8 +556,8 @@ def analyze_leads(
     print(f"Cost per task: ${COST_PER_REQUEST}")
     print(f"")
     print(f"Leads to analyze: {analyzable_count}")
-    print(f"Queries per lead: 3 (all-time, 1-month, 3-months)")
-    print(f"Total API calls: {analyzable_count * 3}")
+    print(f"Queries per lead: 1 (all-time only)")
+    print(f"Total API calls: {analyzable_count * 1}")
     print(f"Estimated cost: ${estimated_cost:.2f}")
     print(f"{'='*60}")
     print(f"")
@@ -586,8 +584,8 @@ def analyze_leads(
         'total_ads_3_months': 0
     }
 
-    # Process leads sequentially (3 API calls per lead)
-    print(f"\nProcessing {analyzable_count} leads (3 queries each)...")
+    # Process leads sequentially (1 API call per lead)
+    print(f"\nProcessing {analyzable_count} leads (1 query each)...")
 
     for idx, lead_tuple in enumerate(leads_to_analyze, 1):
         i, company_name, domain, lead = lead_tuple
@@ -608,18 +606,21 @@ def analyze_leads(
             
             # Add results to lead
             lead['dataforseo_google_ads_detected'] = 'TRUE' if period_results['all_time'] > 0 else 'FALSE'
-            lead['ads_count'] = str(period_results['all_time']) if period_results['all_time'] > 0 else ''
+            # Sanity check: 3 months must be >= 1 month, All time must be >= 3 months
+            period_results['three_months'] = max(period_results['three_months'], period_results['one_month'])
+            period_results['all_time'] = max(period_results['all_time'], period_results['three_months'])
+            
             lead['ads_count_all_time'] = str(period_results['all_time'])
-            lead['ads_count_1_month'] = str(period_results['one_month'])
-            lead['ads_count_3_months'] = str(period_results['three_months'])
+            lead['ads_count_1_month'] = '' # str(period_results['one_month'])
+            lead['ads_count_3_months'] = '' # str(period_results['three_months'])
             lead['ads_position'] = ''
             lead['competitor_ads'] = 'FALSE'
             lead['dataforseo_status'] = 'analyzed'
-            lead['dataforseo_cost'] = COST_PER_REQUEST * 3  # 3 queries
+            lead['dataforseo_cost'] = COST_PER_REQUEST * 1  # 1 query
             
             # Update stats
             stats['success_count'] += 1
-            stats['total_cost'] += COST_PER_REQUEST * 3
+            stats['total_cost'] += COST_PER_REQUEST * 1
             stats['total_ads_all_time'] += period_results['all_time']
             stats['total_ads_1_month'] += period_results['one_month']
             stats['total_ads_3_months'] += period_results['three_months']
@@ -635,7 +636,6 @@ def analyze_leads(
         except Exception as e:
             # Failed
             lead['dataforseo_google_ads_detected'] = ''
-            lead['ads_count'] = ''
             lead['ads_count_all_time'] = ''
             lead['ads_count_1_month'] = ''
             lead['ads_count_3_months'] = ''
@@ -688,9 +688,9 @@ def analyze_leads(
     print(f"\n{'='*60}")
     print(f"{'ACTUAL API COST':^60}")
     print(f"{'='*60}")
-    print(f"Total API calls: {stats['success_count'] * 3}")  # 3 queries per success
+    print(f"Total API calls: {stats['success_count'] * 1}")  # 1 query per success
     print(f"Cost per call: ${COST_PER_REQUEST}")
-    print(f"Queries per lead: 3 (all-time, 1-month, 3-months)")
+    print(f"Queries per lead: 1 (all-time only)")
     print(f"TOTAL COST: ${stats['total_cost']:.2f}")
     print(f"{'='*60}")
 

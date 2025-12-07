@@ -33,8 +33,8 @@ The script uses DataForSEO's Google Ads Search SERP API to:
 The script adds these columns to your leads (prefixed with `dataforseo_` to avoid conflicts with GTM check):
 
 - `dataforseo_google_ads_detected` (boolean) - Whether Google Ads were found in search results for this company
-- `ads_count` (number) - Number of ads detected in search results (empty if 0)
-- `ads_position` (string) - Position of ads (e.g., "top", "bottom", "both")
+- `dataforseo_google_ads_detected` (boolean) - Whether Google Ads were found in search results for this company
+- `ads_count_all_time` (number) - Total ads detected in last 12 months
 - `competitor_ads` (boolean) - Whether competitors are bidding on this company's brand name
 - `dataforseo_status` - "analyzed", "failed", "no_results", "no_website", or "skipped_no_gtm_tracking"
 - `dataforseo_cost` (number) - Cost in USD for this API call (0.0 for skipped leads)
@@ -497,8 +497,8 @@ Detect if companies are running Google Ads by querying the DataForSEO **Google A
    - Searches by **Company Name** (e.g., "RVision Homes LTD").
    - **Multi-Period Analysis**: Queries 3 time periods for each lead:
      1. **All Time**: No date filter (default 12 months).
-     2. **Last 1 Month**: Ads active in the last 30 days.
-     3. **Last 3 Months**: Ads active in the last 90 days.
+     2. **Last 1 Month**: (Disabled)
+     3. **Last 3 Months**: (Disabled)
 4. **Analyze Results**:
    - Extracts `approx_ads_count` from the advertiser data.
    - Determines if ads are detected based on the "All Time" count.
@@ -510,7 +510,6 @@ The following columns are added to the output sheet:
 | Column | Description |
 |--------|-------------|
 | `dataforseo_google_ads_detected` | `TRUE` if ads found (all-time), `FALSE` otherwise |
-| `ads_count` | Total ads found (all-time) |
 | `ads_count_all_time` | Total ads found (last 12 months) |
 | `ads_count_1_month` | Ads found in the last 30 days |
 | `ads_count_3_months` | Ads found in the last 90 days |
@@ -521,9 +520,9 @@ The following columns are added to the output sheet:
 
 ## API Cost
 - **Per Query**: $0.0006
-- **Queries Per Lead**: 3 (All-time, 1-month, 3-months)
-- **Total Cost Per Lead**: **$0.0018**
-- **Example**: 100 leads = $0.18
+- **Queries Per Lead**: 1 (All-time only)
+- **Total Cost Per Lead**: **$0.0006**
+- **Example**: 100 leads = $0.06
 
 ## Usage
 
@@ -557,8 +556,7 @@ ads_position + competitor_ads + dataforseo_status + dataforseo_cost
 ```
 
 - `dataforseo_google_ads_detected`: TRUE/FALSE (or empty if skipped)
-- `ads_count`: Numeric (1, 2, 3+) or empty if 0
-- `ads_position`: "top", "bottom", "both", or empty
+- `ads_count_all_time`: Numeric (1, 2, 3+) or empty if 0
 - `competitor_ads`: TRUE/FALSE (or empty if skipped)
 - `dataforseo_status`: "analyzed", "failed", "no_results", "no_website", or "skipped_no_gtm_tracking"
 - `dataforseo_cost`: Numeric (0.0006 for analyzed leads, 0.0 for skipped)
