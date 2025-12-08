@@ -152,54 +152,58 @@ def get_website_domain_from_lead(lead: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-def query_company_ads_for_periods(
-    company_name: str,
+def query_company_ads_batch(
+    company_names: List[str],
     login: str,
     password: str,
     location: str = "United States",
     verbose: bool = False
-) -> Dict[str, int]:
+) -> List[Dict[str, int]]:
     """
-    Query advertiser data for a company across multiple time periods.
-    Makes 3 API calls: all-time, last 1 month, last 3 months.
-    
+    Query advertiser data for multiple companies in a single batch.
+    Posts all tasks at once, then retrieves results in parallel.
+
     Returns:
-        Dictionary with keys: all_time, one_month, three_months (ad counts)
+        List of dictionaries with keys: all_time (ad counts), one per company
     """
-    from datetime import datetime, timedelta
-    
-    results = {
-        'all_time': 0,
-        'one_month': 0,
-        'three_months': 0
-    }
-    
-    # Calculate dates
-    today = datetime.now().strftime('%Y-%m-%d')
-    one_month_ago = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-    three_months_ago = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
-    
-    # Query 1: All time (no date filter)
-    task_id = post_tasks_bulk_to_dataforseo([company_name], login, password, location, "en", None, None, verbose)
-    if task_id and task_id[0]:
-        time.sleep(3)
-        result = get_task_result_from_dataforseo(task_id[0], login, password, verbose=verbose)
-        results['all_time'] = result.get('ads_count', 0)
-    
-    # Query 2: Last 1 month
-    # task_id = post_tasks_bulk_to_dataforseo([company_name], login, password, location, "en", one_month_ago, today, verbose)
-    # if task_id and task_id[0]:
-    #     time.sleep(3)
-    #     result = get_task_result_from_dataforseo(task_id[0], login, password, verbose=verbose)
-    #     results['one_month'] = result.get('ads_count', 0)
-    
-    # Query 3: Last 3 months
-    # task_id = post_tasks_bulk_to_dataforseo([company_name], login, password, location, "en", three_months_ago, today, verbose)
-    # if task_id and task_id[0]:
-    #     time.sleep(3)
-    #     result = get_task_result_from_dataforseo(task_id[0], login, password, verbose=verbose)
-    #     results['three_months'] = result.get('ads_count', 0)
-    
+    if not company_names:
+        return []
+
+    # Post all tasks in a single API call (up to 100)
+    if verbose:
+        print(f"  Posting batch of {len(company_names)} tasks...")
+
+    task_ids = post_tasks_bulk_to_dataforseo(
+        company_names, login, password, location, "en", None, None, verbose
+    )
+
+    if not task_ids:
+        return [{'all_time': 0} for _ in company_names]
+
+    # Wait a bit for tasks to start processing
+    time.sleep(3)
+
+    # Retrieve results in parallel using ThreadPoolExecutor
+    results = [{'all_time': 0} for _ in company_names]
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        # Submit all retrieval tasks
+        future_to_idx = {
+            executor.submit(get_task_result_from_dataforseo, task_id, login, password, 60, verbose): idx
+            for idx, task_id in enumerate(task_ids) if task_id
+        }
+
+        # Collect results as they complete
+        for future in as_completed(future_to_idx):
+            idx = future_to_idx[future]
+            try:
+                result = future.result()
+                results[idx] = {'all_time': result.get('ads_count', 0)}
+            except Exception as e:
+                if verbose:
+                    print(f"  Error retrieving result for task {idx}: {str(e)}")
+                results[idx] = {'all_time': 0}
+
     return results
 
 
@@ -406,64 +410,13 @@ def get_task_result_from_dataforseo(
     return result
 
 
-def process_task_batch(
-    data_with_indices: List[tuple],
-    login: str,
-    password: str,
-    location: str = "United States",
-    language: str = "en",
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
-    verbose: bool = False
-) -> List[tuple]:
-    """
-    Process a batch of leads (up to 100) using bulk API posting.
-
-    Args:
-        data_with_indices: List of (index, company_name, domain, lead) tuples
-        date_from: Start date for ads filter (YYYY-MM-DD)
-        date_to: End date for ads filter (YYYY-MM-DD)
-
-    Returns:
-        List of (index, company_name, domain, lead, result) tuples
-    """
-    # Extract company names for bulk posting
-    company_names = [company_name for _, company_name, _, _ in data_with_indices]
-
-    # Post all tasks in one API call
-    task_ids = post_tasks_bulk_to_dataforseo(company_names, login, password, location, language, date_from, date_to, verbose)
-
-    # Wait a bit for tasks to process
-    time.sleep(3)
-
-    # Retrieve results for all tasks
-    results = []
-    for (idx, company_name, domain, lead), task_id in zip(data_with_indices, task_ids):
-        if task_id:
-            result = get_task_result_from_dataforseo(task_id, login, password, max_wait=60, verbose=verbose)
-            # Add domain to result for ad matching
-            result['domain'] = domain
-        else:
-            result = {
-                'google_ads_detected': False,
-                'ads_count': 0,
-                'ads_position': '',
-                'competitor_ads': False,
-                'status': 'failed',
-                'cost': 0.0,
-                'domain': domain
-            }
-        results.append((idx, company_name, domain, lead, result))
-
-    return results
-
-
 def analyze_leads(
     leads: List[Dict[str, Any]],
     login: str,
     password: str,
     location: str = "United States",
-    verbose: bool = False
+    verbose: bool = False,
+    auto_confirm: bool = False
 ) -> List[Dict[str, Any]]:
     """
     Analyze all leads for Google Ads using DataForSEO API.
@@ -475,6 +428,7 @@ def analyze_leads(
         password: DataForSEO API password
         location: Google search location (default: "United States")
         verbose: Print detailed progress (default: False)
+        auto_confirm: Skip confirmation prompt (default: False)
 
     Returns:
         List of leads with Google Ads detection fields added
@@ -565,10 +519,13 @@ def analyze_leads(
     print(f"")
 
     # Ask for confirmation
-    confirmation = input("Do you want to proceed? (yes/no): ").strip().lower()
-    if confirmation != 'yes':
-        print("Operation cancelled by user")
-        sys.exit(0)
+    if not auto_confirm:
+        confirmation = input("Do you want to proceed? (yes/no): ").strip().lower()
+        if confirmation != 'yes':
+            print("Operation cancelled by user")
+            sys.exit(0)
+    else:
+        print("Auto-confirmed (--yes flag)")
 
     print(f"\nProceeding with analysis...")
 
@@ -584,73 +541,88 @@ def analyze_leads(
         'total_ads_3_months': 0
     }
 
-    # Process leads sequentially (1 API call per lead)
-    print(f"\nProcessing {analyzable_count} leads (1 query each)...")
+    # Process leads in batches of 100 (API limit)
+    BATCH_SIZE = 100
+    print(f"\nProcessing {analyzable_count} leads in batches of {BATCH_SIZE}...")
 
-    for idx, lead_tuple in enumerate(leads_to_analyze, 1):
-        i, company_name, domain, lead = lead_tuple
-        
-        if verbose:
-            display_name = company_name or domain or lead.get('Company Name', 'Unknown')
-            print(f"\n[{idx}/{analyzable_count}] Analyzing {display_name}...")
-        
-        # Query all 3 time periods for this company
+    total_processed = 0
+    for batch_start in range(0, len(leads_to_analyze), BATCH_SIZE):
+        batch_end = min(batch_start + BATCH_SIZE, len(leads_to_analyze))
+        batch = leads_to_analyze[batch_start:batch_end]
+        batch_size = len(batch)
+
+        print(f"\nProcessing batch {batch_start//BATCH_SIZE + 1} ({batch_size} leads)...")
+
+        # Extract company names for this batch
+        batch_company_names = [company_name for _, company_name, _, _ in batch]
+
+        # Query all companies in this batch at once
         try:
-            period_results = query_company_ads_for_periods(
-                company_name,
+            batch_results = query_company_ads_batch(
+                batch_company_names,
                 login,
                 password,
                 location,
                 verbose
             )
-            
-            # Add results to lead
-            lead['dataforseo_google_ads_detected'] = 'TRUE' if period_results['all_time'] > 0 else 'FALSE'
-            # Sanity check: 3 months must be >= 1 month, All time must be >= 3 months
-            period_results['three_months'] = max(period_results['three_months'], period_results['one_month'])
-            period_results['all_time'] = max(period_results['all_time'], period_results['three_months'])
-            
-            lead['ads_count_all_time'] = str(period_results['all_time'])
-            lead['ads_count_1_month'] = '' # str(period_results['one_month'])
-            lead['ads_count_3_months'] = '' # str(period_results['three_months'])
-            lead['ads_position'] = ''
-            lead['competitor_ads'] = 'FALSE'
-            lead['dataforseo_status'] = 'analyzed'
-            lead['dataforseo_cost'] = COST_PER_REQUEST * 1  # 1 query
-            
-            # Update stats
-            stats['success_count'] += 1
-            stats['total_cost'] += COST_PER_REQUEST * 1
-            stats['total_ads_all_time'] += period_results['all_time']
-            stats['total_ads_1_month'] += period_results['one_month']
-            stats['total_ads_3_months'] += period_results['three_months']
-            
-            if period_results['all_time'] > 0:
-                stats['ads_detected_count'] += 1
-            
-            if verbose:
-                print(f"    All-time: {period_results['all_time']} ads")
-                print(f"    Last 1 month: {period_results['one_month']} ads")
-                print(f"    Last 3 months: {period_results['three_months']} ads")
-                
+
+            # Apply results to each lead in the batch
+            for (i, company_name, domain, lead), period_results in zip(batch, batch_results):
+                try:
+                    # Add results to lead
+                    lead['dataforseo_google_ads_detected'] = 'TRUE' if period_results['all_time'] > 0 else 'FALSE'
+                    lead['ads_count_all_time'] = str(period_results['all_time'])
+                    lead['ads_count_1_month'] = ''  # Not queried anymore
+                    lead['ads_count_3_months'] = ''  # Not queried anymore
+                    lead['ads_position'] = ''
+                    lead['competitor_ads'] = 'FALSE'
+                    lead['dataforseo_status'] = 'analyzed'
+                    lead['dataforseo_cost'] = COST_PER_REQUEST * 1  # 1 query
+
+                    # Update stats
+                    stats['success_count'] += 1
+                    stats['total_cost'] += COST_PER_REQUEST * 1
+                    stats['total_ads_all_time'] += period_results['all_time']
+
+                    if period_results['all_time'] > 0:
+                        stats['ads_detected_count'] += 1
+
+                    if verbose:
+                        display_name = company_name or domain or lead.get('Company Name', 'Unknown')
+                        print(f"  {display_name}: {period_results['all_time']} ads")
+
+                except Exception as e:
+                    # Failed to process individual lead
+                    lead['dataforseo_google_ads_detected'] = ''
+                    lead['ads_count_all_time'] = ''
+                    lead['ads_count_1_month'] = ''
+                    lead['ads_count_3_months'] = ''
+                    lead['ads_position'] = ''
+                    lead['competitor_ads'] = ''
+                    lead['dataforseo_status'] = 'failed'
+                    lead['dataforseo_cost'] = 0.0
+                    stats['failed_count'] += 1
+
+                    if verbose:
+                        print(f"    ERROR processing lead: {str(e)}")
+
         except Exception as e:
-            # Failed
-            lead['dataforseo_google_ads_detected'] = ''
-            lead['ads_count_all_time'] = ''
-            lead['ads_count_1_month'] = ''
-            lead['ads_count_3_months'] = ''
-            lead['ads_position'] = ''
-            lead['competitor_ads'] = ''
-            lead['dataforseo_status'] = 'failed'
-            lead['dataforseo_cost'] = 0.0
-            stats['failed_count'] += 1
-            
-            if verbose:
-                print(f"    ERROR: {str(e)}")
-        
+            # Entire batch failed
+            print(f"ERROR: Batch failed: {str(e)}")
+            for i, company_name, domain, lead in batch:
+                lead['dataforseo_google_ads_detected'] = ''
+                lead['ads_count_all_time'] = ''
+                lead['ads_count_1_month'] = ''
+                lead['ads_count_3_months'] = ''
+                lead['ads_position'] = ''
+                lead['competitor_ads'] = ''
+                lead['dataforseo_status'] = 'failed'
+                lead['dataforseo_cost'] = 0.0
+                stats['failed_count'] += 1
+
         # Show progress
-        if idx % 10 == 0 or idx == analyzable_count:
-            print(f"Progress: {idx}/{analyzable_count} ({idx/analyzable_count*100:.1f}%)")
+        total_processed += batch_size
+        print(f"Progress: {total_processed}/{analyzable_count} ({total_processed/analyzable_count*100:.1f}%)")
 
     # Sort leads back to original order
     all_lead_tuples = (
@@ -728,6 +700,7 @@ def main():
     # Options
     parser.add_argument('--location', default="United States", help='Google search location (default: United States)')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
+    parser.add_argument('--yes', '-y', action='store_true', help='Auto-confirm cost (skip prompt)')
 
     args = parser.parse_args()
 
@@ -750,7 +723,8 @@ def main():
         login,
         password,
         location=args.location,
-        verbose=args.verbose
+        verbose=args.verbose,
+        auto_confirm=args.yes
     )
 
     # Save results
