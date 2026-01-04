@@ -13,22 +13,26 @@ Find email addresses, phone numbers, and social media contacts for leads by doma
 
 ## Algorithm
 1. **Load Data**: Reads leads from a JSON file or Google Sheet.
-2. **Filter Leads**: **BY DEFAULT**, only processes leads with valid domain/website URLs.
+2. **Filter Leads**: **BY DEFAULT**, only processes leads that are missing email addresses AND have valid domain/website URLs.
+   - Checks for empty/missing `email` field (or `personEmail`, `person_email` variants)
+   - **COST OPTIMIZATION**: Skip leads that already have emails to avoid wasting API credits
 3. **Validate Domains**: Ensures each lead has a valid company domain or website field.
 4. **Extract Domains**: Cleans and normalizes domain names (strips https://, www., trailing slashes).
 5. **Permission Check**: **REQUIRED** - Asks for user confirmation before running, displaying:
    - Total number of leads
+   - Number of leads missing emails
    - Number of leads with valid domains (that will be processed)
    - Estimated API cost (credits per domain)
    - Max leads limit
-6. **API Calls**: For each lead with a domain, makes an API call to Outscraper with the domain.
+6. **API Calls**: For each lead missing an email and with a domain, makes an API call to Outscraper with the domain.
 7. **Update Leads**: Enriches the lead data with:
    - **Multiple email addresses** with contact names and job titles
    - **Individual contacts** (name, title, email, LinkedIn profile)
    - **Phone numbers** with source information
    - **Social media links** (Facebook, LinkedIn, Twitter, Instagram, YouTube, TikTok, WhatsApp, Discord, GitHub, Crunchbase)
    - **Company details** (industry, size, founded year, address, employee count)
-8. **Output**: Saves ALL leads (enriched and skipped) to a new file or sheet.
+8. **Temporary Backup**: **ALWAYS** saves enriched data to a temporary JSON file in `.tmp/` directory BEFORE attempting Google Sheets upload. This ensures no data loss if the Sheets API fails.
+9. **Output**: Saves ALL leads (enriched and skipped) to final destination (file or sheet).
 
 ## Tools
 - `execution/outscraper_find_emails.py` - Email and contact enrichment script using Outscraper API
@@ -40,6 +44,7 @@ Find email addresses, phone numbers, and social media contacts for leads by doma
 ## Safety Rules
 > [!IMPORTANT]
 > **SAFETY GUARDS**
+> - **BY DEFAULT, only processes leads missing email addresses** - this prevents wasting API credits on leads that already have emails
 > - **Only processes leads with valid domain/website fields** - this prevents wasted API calls
 > - Automatically extracts and normalizes domains from various URL formats
 > - This operation uses paid API credits
@@ -52,6 +57,8 @@ Find email addresses, phone numbers, and social media contacts for leads by doma
 > - Always create a **NEW** file or **NEW** sheet for the enriched output
 > - Do not use the same filename for input and output
 > - Preserve all original lead fields
+> - **ALWAYS save a temporary JSON backup** to `.tmp/` before attempting Google Sheets upload
+> - This prevents data loss if Google Sheets API fails (permissions, rate limits, etc.)
 
 ## Instructions
 
@@ -94,6 +101,8 @@ Find email addresses, phone numbers, and social media contacts for leads by doma
 ### Optional Flags
 - `--verbose` or `-v`: Display detailed information for each API call
 - `--sheet-name "Sheet1"`: Specify source sheet name when using Google Sheets (default: first sheet)
+- `--skip-existing-emails`: Only process leads missing email addresses (default: enabled for cost optimization)
+- `--process-all`: Process ALL leads regardless of existing email data (use with caution - may waste credits)
 
 ### Example Workflow
 
@@ -105,7 +114,7 @@ Find email addresses, phone numbers, and social media contacts for leads by doma
      --output .tmp/cleaned_leads.json
    ```
 
-2. **Enrich with Outscraper**:
+2. **Enrich ONLY leads missing emails with Outscraper** (default, cost-efficient):
    ```bash
    .venv/bin/python execution/outscraper_find_emails.py \
      --source-file .tmp/cleaned_leads.json \
@@ -113,8 +122,20 @@ Find email addresses, phone numbers, and social media contacts for leads by doma
      --max-leads 50 \
      --verbose
    ```
+   This will automatically skip leads that already have email addresses.
 
-3. **Export to Google Sheets** (if needed):
+3. **Enrich ALL leads** (if you need to refresh/update contact data):
+   ```bash
+   .venv/bin/python execution/outscraper_find_emails.py \
+     --source-file .tmp/cleaned_leads.json \
+     --output .tmp/outscraper_enriched_leads.json \
+     --max-leads 50 \
+     --process-all \
+     --verbose
+   ```
+   Use `--process-all` to override the default skip-existing-emails behavior.
+
+4. **Export to Google Sheets** (if needed):
    ```bash
    .venv/bin/python execution/export_to_sheets.py \
      .tmp/outscraper_enriched_leads.json \
@@ -122,7 +143,7 @@ Find email addresses, phone numbers, and social media contacts for leads by doma
      --folder-id "0ADWgx-M8Z5r-Uk9PVA"
    ```
 
-4. **Review results**:
+5. **Review results**:
    The script will show:
    ```
    📧 Outscraper Email & Contact Finder

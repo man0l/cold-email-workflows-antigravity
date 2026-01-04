@@ -180,9 +180,23 @@ def enrich_with_outscraper(client: ApiClient, domain: str, verbose: bool = False
         return None
 
 
-def enrich_leads(leads: List[Dict[str, Any]], max_leads: int, verbose: bool = False) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+def has_email(lead: Dict[str, Any]) -> bool:
+    """Check if lead already has an email address"""
+    email = get_field_value(lead, 'email', 'personEmail', 'person_email', 'primary_email', 'Email')
+    return bool(email)
+
+
+def enrich_leads(leads: List[Dict[str, Any]], max_leads: int, verbose: bool = False, skip_confirm: bool = False, output_file: str = None, skip_existing_emails: bool = True) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     """
     Enrich leads with contact data using Outscraper API.
+
+    Args:
+        leads: List of lead dictionaries
+        max_leads: Maximum number of leads to process
+        verbose: Print detailed output
+        skip_confirm: Skip user confirmation
+        output_file: Output file path for checkpoint
+        skip_existing_emails: Only process leads missing email addresses (default: True)
 
     Returns:
         (enriched_leads, stats)
@@ -204,19 +218,25 @@ def enrich_leads(leads: List[Dict[str, Any]], max_leads: int, verbose: bool = Fa
         'total': len(leads),
         'processed': 0,
         'skipped_no_domain': 0,
+        'skipped_has_email': 0,
         'contacts_found': 0,
         'contacts_not_found': 0
     }
 
-    # Filter leads with domains
+    # Filter leads with domains and optionally without emails
     leads_with_domains = []
     for lead in leads:
+        # Skip if lead already has email and skip_existing_emails is True
+        if skip_existing_emails and has_email(lead):
+            stats['skipped_has_email'] += 1
+            continue
+
         domain = get_field_value(lead, 'companyWebsite', 'website', 'companyDomain', 'domain', 'company_website', 'company_domain')
         domain = extract_domain(domain)
         if domain:
             leads_with_domains.append((lead, domain))
 
-    stats['skipped_no_domain'] = len(leads) - len(leads_with_domains)
+    stats['skipped_no_domain'] = len(leads) - len(leads_with_domains) - stats['skipped_has_email']
 
     # Limit to max_leads
     leads_to_process = leads_with_domains[:max_leads]
@@ -226,21 +246,36 @@ def enrich_leads(leads: List[Dict[str, Any]], max_leads: int, verbose: bool = Fa
     print("=" * 60)
     print(f"\n📊 Summary:")
     print(f"  Total leads: {stats['total']}")
-    print(f"  Leads with valid domains: {len(leads_with_domains)}")
+    if skip_existing_emails:
+        print(f"  Leads missing emails: {stats['total'] - stats['skipped_has_email']}")
+        print(f"  Leads with valid domains: {len(leads_with_domains)}")
+        if stats['skipped_has_email'] > 0:
+            print(f"  Skipped (already have emails): {stats['skipped_has_email']}")
+    else:
+        print(f"  Leads with valid domains: {len(leads_with_domains)}")
     print(f"  Will process: {len(leads_to_process)} leads")
     print(f"  Estimated cost: ~{len(leads_to_process)} credits")
     print(f"\n⚠️  WARNING: This will consume API credits!")
+    if skip_existing_emails and stats['skipped_has_email'] > 0:
+        print(f"⚠️  NOTE: Skipping {stats['skipped_has_email']} leads that already have emails")
     print("=" * 60)
 
-    response = input("\nContinue? (yes/no): ").strip().lower()
-    if response != 'yes':
-        print("❌ Aborted by user")
-        sys.exit(0)
+    if not skip_confirm:
+        response = input("\nContinue? (yes/no): ").strip().lower()
+        if response != 'yes':
+            print("❌ Aborted by user")
+            sys.exit(0)
+    else:
+        print("\n✓ Auto-confirmed (--yes flag used)")
 
     enriched_leads = []
     completed_count = 0
 
+    # Create checkpoint file path
+    checkpoint_file = output_file.replace('.json', '_checkpoint.json') if output_file else '.tmp/outscraper_checkpoint.json'
+
     print(f"\n📧 Processing {len(leads_to_process)} leads in parallel...")
+    print(f"💾 Checkpoint file: {checkpoint_file}")
     print("━" * 50)
 
     # Helper function to process a single lead
@@ -321,6 +356,21 @@ def enrich_leads(leads: List[Dict[str, Any]], max_leads: int, verbose: bool = Fa
             stats['processed'] += 1
             enriched_leads.append(lead)
 
+            # Save checkpoint every 10 leads
+            if completed_count % 10 == 0:
+                checkpoint_data = {
+                    'enriched_leads': enriched_leads,
+                    'stats': stats,
+                    'completed_count': completed_count,
+                    'total_to_process': len(leads_to_process)
+                }
+                try:
+                    with open(checkpoint_file, 'w', encoding='utf-8') as f:
+                        json.dump(checkpoint_data, f, indent=2, ensure_ascii=False)
+                except Exception as e:
+                    if verbose:
+                        print(f"  ⚠️  Failed to save checkpoint: {e}")
+
             # Show progress
             if not verbose:
                 progress = int((completed_count / len(leads_to_process)) * 40)
@@ -335,6 +385,20 @@ def enrich_leads(leads: List[Dict[str, Any]], max_leads: int, verbose: bool = Fa
         if lead not in enriched_leads:
             enriched_leads.append(lead)
 
+    # Save final checkpoint
+    checkpoint_data = {
+        'enriched_leads': enriched_leads,
+        'stats': stats,
+        'completed_count': completed_count,
+        'total_to_process': len(leads_to_process)
+    }
+    try:
+        with open(checkpoint_file, 'w', encoding='utf-8') as f:
+            json.dump(checkpoint_data, f, indent=2, ensure_ascii=False)
+        print(f"💾 Final checkpoint saved: {checkpoint_file}")
+    except Exception as e:
+        print(f"⚠️  Failed to save final checkpoint: {e}")
+
     return enriched_leads, stats
 
 
@@ -348,8 +412,8 @@ def save_to_json(leads: List[Dict[str, Any]], output_path: str):
     print(f"\n✅ Saved to: {output_path}")
 
 
-def save_to_google_sheets(leads: List[Dict[str, Any]], sheet_name: str):
-    """Save leads to a new Google Spreadsheet"""
+def save_to_google_sheets(leads: List[Dict[str, Any]], sheet_name: str, source_spreadsheet_id: Optional[str] = None):
+    """Save leads to a new sheet in existing spreadsheet or create new spreadsheet"""
     if not GOOGLE_AVAILABLE:
         print("❌ Error: Google Sheets libraries not available")
         sys.exit(1)
@@ -358,18 +422,45 @@ def save_to_google_sheets(leads: List[Dict[str, Any]], sheet_name: str):
     service = build('sheets', 'v4', credentials=creds)
     drive_service = build('drive', 'v3', credentials=creds)
 
-    # Create new spreadsheet
-    spreadsheet = {
-        'properties': {
-            'title': sheet_name
+    if source_spreadsheet_id:
+        # Add new sheet to existing spreadsheet
+        spreadsheet_id = source_spreadsheet_id
+
+        # Create new sheet in existing spreadsheet
+        request_body = {
+            'requests': [{
+                'addSheet': {
+                    'properties': {
+                        'title': sheet_name
+                    }
+                }
+            }]
         }
-    }
 
-    spreadsheet = service.spreadsheets().create(body=spreadsheet).execute()
-    spreadsheet_id = spreadsheet['spreadsheetId']
+        try:
+            service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body=request_body
+            ).execute()
+            print(f"\n✅ Added new sheet '{sheet_name}' to existing spreadsheet")
+        except HttpError as e:
+            if 'already exists' in str(e):
+                print(f"\n⚠️  Sheet '{sheet_name}' already exists, will overwrite")
+            else:
+                raise
+    else:
+        # Create new spreadsheet
+        spreadsheet = {
+            'properties': {
+                'title': sheet_name
+            }
+        }
 
-    print(f"\n✅ Created spreadsheet: {sheet_name}")
-    print(f"   ID: {spreadsheet_id}")
+        spreadsheet = service.spreadsheets().create(body=spreadsheet).execute()
+        spreadsheet_id = spreadsheet['spreadsheetId']
+
+        print(f"\n✅ Created spreadsheet: {sheet_name}")
+        print(f"   ID: {spreadsheet_id}")
 
     # Prepare data for sheets
     if not leads:
@@ -402,9 +493,12 @@ def save_to_google_sheets(leads: List[Dict[str, Any]], sheet_name: str):
         'values': rows
     }
 
+    # Use sheet name in range if adding to existing spreadsheet
+    range_name = f"'{sheet_name}'!A1" if source_spreadsheet_id else 'A1'
+
     service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
-        range='A1',
+        range=range_name,
         valueInputOption='RAW',
         body=body
     ).execute()
@@ -430,11 +524,23 @@ def main():
     parser.add_argument('--sheet-name', help='Sheet name (for Google Sheets source)', default=None)
     parser.add_argument('--max-leads', type=int, default=50, help='Maximum leads to process (default: 50)')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
+    parser.add_argument('--yes', '-y', action='store_true', help='Skip confirmation prompt')
+
+    # Email filtering options
+    email_filter_group = parser.add_mutually_exclusive_group()
+    email_filter_group.add_argument('--skip-existing-emails', action='store_true', default=True,
+                                    help='Only process leads missing email addresses (default: enabled)')
+    email_filter_group.add_argument('--process-all', action='store_true',
+                                    help='Process ALL leads regardless of existing email data')
 
     args = parser.parse_args()
 
+    # Handle the mutually exclusive group logic
+    skip_existing_emails = not args.process_all
+
     # Load leads
     print("📂 Loading leads...")
+    source_spreadsheet_id = None
     if args.source_file:
         leads = load_from_json(args.source_file)
         print(f"✓ Loaded {len(leads)} leads from {args.source_file}")
@@ -442,12 +548,16 @@ def main():
         leads = load_from_google_sheets(args.source_url, args.sheet_name)
         print(f"✓ Loaded {len(leads)} leads from Google Sheets")
 
+        # Extract spreadsheet ID for later use
+        if '/d/' in args.source_url:
+            source_spreadsheet_id = args.source_url.split('/d/')[1].split('/')[0]
+
     if not leads:
         print("❌ No leads found")
         sys.exit(1)
 
     # Enrich leads
-    enriched_leads, stats = enrich_leads(leads, args.max_leads, args.verbose)
+    enriched_leads, stats = enrich_leads(leads, args.max_leads, args.verbose, args.yes, args.output, skip_existing_emails)
 
     # Print summary
     print("\n" + "=" * 60)
@@ -455,6 +565,8 @@ def main():
     print(f"   Contacts found: {stats['contacts_found']} ({int(stats['contacts_found']/stats['processed']*100) if stats['processed'] > 0 else 0}%)")
     print(f"   No contacts found: {stats['contacts_not_found']} ({int(stats['contacts_not_found']/stats['processed']*100) if stats['processed'] > 0 else 0}%)")
     print(f"   Skipped (no domain): {stats['skipped_no_domain']}")
+    if stats['skipped_has_email'] > 0:
+        print(f"   Skipped (already had emails): {stats['skipped_has_email']}")
     print(f"   Total processed: {stats['processed']}")
     print("=" * 60)
 
@@ -462,7 +574,21 @@ def main():
     if args.output:
         save_to_json(enriched_leads, args.output)
     else:
-        save_to_google_sheets(enriched_leads, args.output_sheet)
+        # ALWAYS save temporary backup before attempting Google Sheets upload
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = f".tmp/outscraper_backup_{timestamp}.json"
+
+        print(f"\n💾 Saving temporary backup to: {backup_path}")
+        save_to_json(enriched_leads, backup_path)
+
+        # Now attempt Google Sheets upload
+        try:
+            save_to_google_sheets(enriched_leads, args.output_sheet, source_spreadsheet_id)
+        except Exception as e:
+            print(f"\n⚠️  Google Sheets upload failed: {e}")
+            print(f"✅ Data is safe in backup file: {backup_path}")
+            print(f"   You can manually upload or retry later.")
 
 
 if __name__ == '__main__':
