@@ -17,7 +17,7 @@ load_dotenv()
 APIFY_API_KEY = os.getenv("APIFY_API_KEY")
 ACTOR_ID = "compass~crawler-google-places"  # Note: Use tilde (~) for API calls, not slash (/)
 
-def scrape_google_maps(search_terms, max_results, language="en", scrape_reviews=False, scrape_images=False, output_file=".tmp/google_maps_leads.json"):
+def scrape_google_maps(search_terms, max_results, language="en", scrape_reviews=False, scrape_images=False, category_filter=None, output_file=".tmp/google_maps_leads.json"):
     """
     Scrape Google Maps leads using the compass/crawler-google-places Apify actor.
 
@@ -27,6 +27,8 @@ def scrape_google_maps(search_terms, max_results, language="en", scrape_reviews=
         language: Language code (default: "en")
         scrape_reviews: Whether to scrape reviews (WARNING: expensive and slow)
         scrape_images: Whether to scrape images
+        category_filter: List of exact Google category names to filter results (e.g., ["Plumber", "Emergency plumbing service"])
+                        Only businesses matching these exact categories will be included. Helps prevent irrelevant broad matches.
         output_file: Path to save the JSON results
     """
     if not APIFY_API_KEY:
@@ -50,6 +52,10 @@ def scrape_google_maps(search_terms, max_results, language="en", scrape_reviews=
         "maxImages": 5 if scrape_images else 0,  # Limit images to reduce cost
     }
 
+    # Add category filter if specified (for exact match filtering)
+    if category_filter:
+        actor_input["categoryFilter"] = category_filter
+
     print("=" * 60)
     print(f"Starting Google Maps scrape with {len(search_terms)} search term(s)")
     print("=" * 60)
@@ -58,6 +64,8 @@ def scrape_google_maps(search_terms, max_results, language="en", scrape_reviews=
     print(f"Language: {language}")
     print(f"Scrape reviews: {scrape_reviews}")
     print(f"Scrape images: {scrape_images}")
+    if category_filter:
+        print(f"Category filter (exact match): {', '.join(category_filter)}")
     print(f"\nSearch terms:")
     for i, term in enumerate(search_terms, 1):
         print(f"  {i}. {term}")
@@ -178,21 +186,30 @@ if __name__ == "__main__":
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Basic scrape - plumbers in Austin
+  # Basic scrape - plumbers in Austin with exact category matching
   python execution/scrape_google_maps.py \\
     --search-terms "plumbers in Austin, TX" \\
+    --category-filter "Plumber" "Emergency plumbing service" \\
     --max-results 100 \\
     --output .tmp/plumbers_austin.json
 
-  # Multiple search terms
+  # Multiple search terms with category filter
   python execution/scrape_google_maps.py \\
     --search-terms "coffee shop in Brooklyn" "cafe in Brooklyn" \\
+    --category-filter "Coffee shop" "Espresso bar" "Cafe" \\
     --max-results 50 \\
     --output .tmp/coffee_brooklyn.json
+
+  # Test run to discover categories (no filter)
+  python execution/scrape_google_maps.py \\
+    --search-terms "restaurants in Miami" \\
+    --max-results 20 \\
+    --output .tmp/test_restaurants.json
 
   # With reviews (expensive!)
   python execution/scrape_google_maps.py \\
     --search-terms "restaurants in Miami" \\
+    --category-filter "Restaurant" "Italian restaurant" "Fine dining restaurant" \\
     --max-results 100 \\
     --scrape-reviews \\
     --output .tmp/restaurants_miami.json
@@ -227,6 +244,11 @@ Examples:
         help="Scrape images (increases cost)"
     )
     parser.add_argument(
+        "--category-filter",
+        nargs="+",
+        help='Exact Google category names to filter results (e.g., "Plumber" "Emergency plumbing service"). Only businesses matching these categories will be included. Prevents irrelevant broad matches.'
+    )
+    parser.add_argument(
         "--output",
         default=".tmp/google_maps_leads.json",
         help="Output JSON file path (default: .tmp/google_maps_leads.json)"
@@ -241,6 +263,7 @@ Examples:
             language=args.language,
             scrape_reviews=args.scrape_reviews,
             scrape_images=args.scrape_images,
+            category_filter=args.category_filter,
             output_file=args.output
         )
     except Exception as e:

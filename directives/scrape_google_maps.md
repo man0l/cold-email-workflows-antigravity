@@ -8,6 +8,7 @@ Scrape local business leads from Google Maps using the Apify `compass/crawler-go
 - **Locations**: Optional list of specific locations to search (e.g., "New York, NY", "Los Angeles, CA", "Texas").
 - **Max Results**: Maximum number of leads to fetch per search term (default: 100).
 - **Language**: Search language code (default: "en").
+- **Category Filter**: List of exact Google category names to filter results (e.g., ["Plumber", "Emergency plumbing service"]). **RECOMMENDED** for preventing irrelevant broad matches. Only businesses matching these exact categories will be included.
 - **Scrape Reviews**: Whether to scrape reviews for each business (default: false). **WARNING**: Enabling reviews significantly increases runtime and costs.
 - **Scrape Images**: Whether to scrape images for each business (default: false).
 
@@ -86,7 +87,63 @@ Review the results:
 - DO NOT proceed with full scrape
 - Review search terms - they may be too broad
 - Try more specific queries (e.g., "emergency plumber" vs "plumber")
+- Consider using category filters to restrict results to exact business types
 - Consider different locations or search approaches
+
+## Preventing Irrelevant Results with Category Filters
+
+**Problem**: Google Maps often returns "close enough" matches when you search. For example, searching "plumbers in Austin" might return HVAC companies, general contractors, or hardware stores.
+
+**Solution**: Use the `--category-filter` parameter to restrict results to ONLY businesses with exact matching Google categories.
+
+### How Category Filtering Works
+
+- Each Google Maps business has one or more categories (e.g., "Plumber", "Emergency plumbing service", "Plumbing supply store")
+- The category filter discards any business whose categories don't match your filter
+- If ANY category of a business matches ANY category in your filter, it's included
+- **IMPORTANT**: Google has thousands of categories and many are synonymous. You must list ALL relevant categories including synonyms.
+
+### Finding the Right Categories
+
+**Method 1: Test Run First**
+1. Run a small test scrape WITHOUT category filter (20 results)
+2. Export to Google Sheets and review the "categoryName" column
+3. Identify the exact category names you want to keep
+4. Re-run with `--category-filter` using those exact names
+
+**Method 2: Common Category Examples**
+
+For **Plumbers**:
+- "Plumber"
+- "Emergency plumbing service"
+- "Plumbing supply store"
+- "Drainage service"
+
+For **Restaurants**:
+- "Restaurant"
+- "Italian restaurant"
+- "Pizza restaurant"
+- "Fine dining restaurant"
+
+For **Dentists**:
+- "Dentist"
+- "Cosmetic dentist"
+- "Pediatric dentist"
+- "Emergency dental service"
+
+For **Coffee Shops**:
+- "Coffee shop"
+- "Espresso bar"
+- "Cafe"
+
+**Pro Tip**: Google has many synonymous categories. For example, "Divorce lawyer", "Divorce service", and "Divorce attorney" are three distinct categories. Some places might only have one of these, so you should include ALL synonyms in your filter to avoid missing relevant businesses.
+
+### Category Filter Best Practices
+
+1. **Start without filters on a test run** to see what categories appear
+2. **Be inclusive with synonyms** - list all variations of your target category
+3. **Some use cases need 20-100+ categories** to cover all synonyms and sub-types
+4. **Balance precision vs coverage** - too restrictive = miss good leads, too broad = get irrelevant results
 
 ## Instructions
 
@@ -126,18 +183,20 @@ Execute the script with your target parameters but limit results to 20 per searc
 - `[location]` = city/region (e.g., `austin`, `nyc`, `california`)
 - `[date]` = current date in format `DD_MMM_YYYY` (e.g., `30_Nov_2025`)
 
-**Example 1: Plumbers in Austin**
+**Example 1: Plumbers in Austin (with category filter for exact matches)**
 ```bash
 .venv/bin/python execution/scrape_google_maps.py \
   --search-terms "plumbers in Austin, TX" "emergency plumber Austin" \
+  --category-filter "Plumber" "Emergency plumbing service" "Drainage service" \
   --max-results 500 \
   --output .tmp/google_maps_plumbers_austin_30_Nov_2025.json
 ```
 
-**Example 2: Coffee Shops in Multiple Cities**
+**Example 2: Coffee Shops in Multiple Cities (with category filter)**
 ```bash
 .venv/bin/python execution/scrape_google_maps.py \
   --search-terms "coffee shop in Brooklyn, NY" "coffee shop in Manhattan, NY" "coffee shop in Queens, NY" \
+  --category-filter "Coffee shop" "Espresso bar" "Cafe" \
   --max-results 200 \
   --output .tmp/google_maps_coffee_nyc_30_Nov_2025.json
 ```
@@ -146,9 +205,19 @@ Execute the script with your target parameters but limit results to 20 per searc
 ```bash
 .venv/bin/python execution/scrape_google_maps.py \
   --search-terms "restaurants in Miami, FL" \
+  --category-filter "Restaurant" "Italian restaurant" "Fine dining restaurant" "Pizza restaurant" \
   --max-results 100 \
   --scrape-reviews \
   --output .tmp/google_maps_restaurants_miami_30_Nov_2025.json
+```
+
+**Example 4: Broad search without category filter (for discovering categories)**
+```bash
+.venv/bin/python execution/scrape_google_maps.py \
+  --search-terms "plumbers in Austin, TX" \
+  --max-results 20 \
+  --output .tmp/test_plumbers_categories.json
+# Then export to Sheets to review the categoryName column and identify exact categories to filter by
 ```
 
 ### 4. Export to Google Sheets
@@ -200,11 +269,13 @@ Export the scraped leads to a Google Sheet in the Shared Drive folder.
 ## Troubleshooting
 
 - **Run Failed**: Check the Apify console at https://console.apify.com for detailed logs.
-- **Zero Results**: Your search term may be too specific or have a typo. Try broader terms.
+- **Zero Results**: Your search term may be too specific or have a typo. Try broader terms. If using `--category-filter`, your categories may be too restrictive or have typos.
+- **Too Many Irrelevant Results**: Use `--category-filter` to restrict results to exact business categories. Run a test without filters first to identify the correct category names.
 - **Wrong Location**: Google Maps uses IP-based location. Add explicit city/state to search terms.
 - **Missing Contact Info**: Not all Google Maps listings have websites/emails. This is normal - you can enrich later with other tools.
 - **Timeout Errors**: Large scrapes (>1000 results) may need to be broken into smaller batches.
 - **Google Auth Error**: Ensure `credentials.json` is in the project root for Google Sheets export.
+- **Category Filter Not Working**: Ensure category names match EXACTLY as they appear in Google Maps (check "categoryName" field in test results). Categories are case-sensitive.
 
 ## Known Limitations
 
