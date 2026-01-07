@@ -22,7 +22,14 @@ Filter and clean leads from a spreadsheet or scraped JSON file based on keyword 
     *   **Negative Keywords**: Removes leads matching *any* negative keyword.
     *   **Industries**: Keeps leads matching *at least one* target industry (if provided).
     *   **Website Check**: Removes leads without a valid website/domain (enabled by default, use `--no-require-website` to disable).
-    *   **Email Domain Check**: Compares the email domain with the website domain. If they differ (e.g., `john@gmail.com` vs `company.com`), the email field is **cleared** (removed), but the lead is kept.
+    *   **Email Domain Check**: Only keeps corporate emails that match the company website domain. Removes:
+        *   Generic email providers (Gmail, Yahoo, Outlook, Hotmail, AOL, iCloud, etc.)
+        *   Corporate emails that don't match the company domain
+        *   Examples:
+            *   ❌ CLEAR: `accabins@yahoo.com` (generic provider)
+            *   ❌ CLEAR: `john@gmail.com` (generic provider)
+            *   ✅ KEEP: `contact@company.com` matching `company.com`
+            *   ❌ CLEAR: `john@otherdomain.com` when website is `company.com` (non-matching corporate email)
 4.  **Validate Websites**: After filtering, validates all remaining websites in parallel:
     *   Makes HTTP requests to check availability
     *   Detects SSL certificate errors

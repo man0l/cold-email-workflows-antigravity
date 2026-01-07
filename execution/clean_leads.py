@@ -326,9 +326,19 @@ def clean_lead_urls(lead: Dict[str, Any]) -> None:
 def verify_email_match(lead: Dict[str, Any]) -> bool:
     """
     Check if email domain matches website domain.
-    If mismatch, clear email fields and return False.
-    If match or no email/website, return True.
+    Clears emails from generic providers (gmail, yahoo, outlook, etc.).
+    Clears non-matching corporate emails.
+    Only keeps corporate emails that match the company domain.
     """
+    # Generic email providers that should be cleared
+    GENERIC_PROVIDERS = {
+        'gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'aol.com',
+        'icloud.com', 'mail.com', 'protonmail.com', 'zoho.com', 'yandex.com',
+        'gmx.com', 'live.com', 'msn.com', 'me.com', 'mac.com',
+        'yahoo.co.uk', 'yahoo.ca', 'yahoo.fr', 'yahoo.de', 'yahoo.com.au',
+        'googlemail.com', 'att.net', 'sbcglobal.net', 'verizon.net',
+        'comcast.net', 'cox.net', 'earthlink.net', 'charter.net'
+    }
     # Get email
     email_field = None
     email = None
@@ -365,9 +375,16 @@ def verify_email_match(lead: Dict[str, Any]) -> bool:
         if not email_domain or not website_domain:
             return True
 
+        # Clear generic provider emails (gmail, yahoo, etc.)
+        if email_domain in GENERIC_PROVIDERS:
+            for field in ['email', 'emailAddress', 'contact_email', 'workEmail', 'personalEmail', 'Email']:
+                if field in lead:
+                    lead[field] = ''
+            return False
+
+        # Clear non-matching corporate emails
         if email_domain != website_domain:
-            # Mismatch - clear all email fields
-            for field in ['email', 'emailAddress', 'contact_email', 'workEmail', 'personalEmail']:
+            for field in ['email', 'emailAddress', 'contact_email', 'workEmail', 'personalEmail', 'Email']:
                 if field in lead:
                     lead[field] = ''
             return False
