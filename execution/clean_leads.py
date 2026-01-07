@@ -326,11 +326,13 @@ def clean_lead_urls(lead: Dict[str, Any]) -> None:
 def verify_email_match(lead: Dict[str, Any]) -> bool:
     """
     Check if email domain matches website domain.
-    Clears emails from generic providers (gmail, yahoo, outlook, etc.).
-    Clears non-matching corporate emails.
-    Only keeps corporate emails that match the company domain.
+    Returns False (reject lead) if:
+    - Email is from a generic provider (gmail, yahoo, outlook, etc.)
+    - Email domain doesn't match website domain
+    - No email address present
+    Returns True (keep lead) only if email matches company domain.
     """
-    # Generic email providers that should be cleared
+    # Generic email providers that should cause lead rejection
     GENERIC_PROVIDERS = {
         'gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'aol.com',
         'icloud.com', 'mail.com', 'protonmail.com', 'zoho.com', 'yandex.com',
@@ -339,17 +341,17 @@ def verify_email_match(lead: Dict[str, Any]) -> bool:
         'googlemail.com', 'att.net', 'sbcglobal.net', 'verizon.net',
         'comcast.net', 'cox.net', 'earthlink.net', 'charter.net'
     }
+
     # Get email
-    email_field = None
     email = None
     for field in ['email', 'emailAddress', 'contact_email', 'workEmail', 'Email']:
         if lead.get(field):
             email = lead.get(field)
-            email_field = field
             break
 
+    # Reject if no email or invalid email
     if not email or '@' not in str(email):
-        return True
+        return False
 
     # Get website
     website = (
@@ -364,8 +366,9 @@ def verify_email_match(lead: Dict[str, Any]) -> bool:
         lead.get('Company Domain')
     )
 
+    # Reject if no website
     if not website:
-        return True
+        return False
 
     # Compare domains
     try:
@@ -373,26 +376,21 @@ def verify_email_match(lead: Dict[str, Any]) -> bool:
         website_domain = extract_domain(str(website))
 
         if not email_domain or not website_domain:
-            return True
+            return False
 
-        # Clear generic provider emails (gmail, yahoo, etc.)
+        # Reject generic provider emails
         if email_domain in GENERIC_PROVIDERS:
-            for field in ['email', 'emailAddress', 'contact_email', 'workEmail', 'personalEmail', 'Email']:
-                if field in lead:
-                    lead[field] = ''
             return False
 
-        # Clear non-matching corporate emails
+        # Reject non-matching corporate emails
         if email_domain != website_domain:
-            for field in ['email', 'emailAddress', 'contact_email', 'workEmail', 'personalEmail', 'Email']:
-                if field in lead:
-                    lead[field] = ''
             return False
 
-    except Exception:
+        # Keep: email matches company domain
         return True
 
-    return True
+    except Exception:
+        return False
 
 
 def clean_leads(
@@ -405,7 +403,7 @@ def clean_leads(
 ) -> tuple[List[Dict[str, Any]], Dict[str, int]]:
     """
     Clean leads based on filters.
-    
+
     Returns:
         (cleaned_leads, stats)
     """
@@ -415,11 +413,13 @@ def clean_leads(
         'after_not_keywords': 0,
         'after_industries': 0,
         'after_website': 0,
-        'emails_removed': 0,
+        'after_email_check': 0,
+        'after_dedup': 0,
         'final': 0
     }
-    
+
     cleaned = []
+    seen_emails = set()  # Track emails we've already seen
 
     for lead in leads:
         # Clean URLs first (remove query parameters)
@@ -459,12 +459,27 @@ def clean_leads(
             
         stats['after_website'] += 1
         
-        # Check email domain match (modify lead in place)
+        # Filter 5: Check email domain match (reject lead if email invalid/generic/mismatched)
         if not verify_email_match(lead):
-            stats['emails_removed'] += 1
             if verbose:
-                print(f"EMAIL REMOVED (domain mismatch): {company_name}")
-        
+                email = lead.get('email') or lead.get('emailAddress') or lead.get('Email') or 'N/A'
+                print(f"FILTERED (email): {company_name} - {email}")
+            continue
+
+        stats['after_email_check'] += 1
+
+        # Filter 6: Deduplication - check if we've seen this email before
+        email = lead.get('email') or lead.get('emailAddress') or lead.get('Email')
+        if email:
+            email_normalized = str(email).lower().strip()
+            if email_normalized in seen_emails:
+                if verbose:
+                    print(f"FILTERED (duplicate): {company_name} - {email}")
+                continue
+            seen_emails.add(email_normalized)
+
+        stats['after_dedup'] += 1
+
         # Lead passed all filters
         if verbose:
             print(f"PASSED: {company_name}")
@@ -487,10 +502,12 @@ def print_stats(stats: Dict[str, int]) -> None:
     print(f"After industry filter:     {stats['after_industries']} ({stats['after_industries']/total*100:.1f}%)" if total > 0 else "After industry filter:     0")
     if 'after_website' in stats and stats['after_website'] != stats['after_industries']:
          print(f"After website filter:      {stats['after_website']} ({stats['after_website']/total*100:.1f}%)" if total > 0 else "After website filter:      0")
-    
-    if 'emails_removed' in stats and stats['emails_removed'] > 0:
-        print(f"Emails removed (mismatch): {stats['emails_removed']} ({(stats['emails_removed']/stats['final'])*100:.1f}% of final)" if stats['final'] > 0 else f"Emails removed (mismatch): {stats['emails_removed']}")
-        
+    if 'after_email_check' in stats:
+         print(f"After email filter:        {stats['after_email_check']} ({stats['after_email_check']/total*100:.1f}%)" if total > 0 else "After email filter:        0")
+    if 'after_dedup' in stats:
+         duplicates_removed = stats['after_email_check'] - stats['after_dedup']
+         print(f"After deduplication:       {stats['after_dedup']} ({stats['after_dedup']/total*100:.1f}%) [removed {duplicates_removed} duplicates]" if total > 0 else "After deduplication:       0")
+
     print("="*50)
     print(f"FINAL CLEAN LEADS:         {stats['final']} ({stats['final']/total*100:.1f}%)" if total > 0 else "FINAL CLEAN LEADS:         0")
     print("="*50 + "\n")
@@ -616,22 +633,11 @@ def main():
         print(f"Final count after website validation: {len(cleaned_leads)}")
         
         # Remove status columns from output
-        leads_without_email = 0
         for lead in cleaned_leads:
             lead.pop('website_status', None)
             lead.pop('website_status_message', None)
-            
-            # Check if email is missing
-            has_email = False
-            for field in ['email', 'emailAddress', 'contact_email', 'workEmail', 'personalEmail']:
-                if lead.get(field) and str(lead.get(field)).strip():
-                    has_email = True
-                    break
-            if not has_email:
-                leads_without_email += 1
-                
+
         print(f"Final count after website validation: {len(cleaned_leads)}")
-        print(f"Leads without email: {leads_without_email} ({(leads_without_email/len(cleaned_leads))*100:.1f}%)")
             
     except ImportError as e:
         print(f"WARNING: Could not import validate_websites module: {e}")

@@ -22,14 +22,17 @@ Filter and clean leads from a spreadsheet or scraped JSON file based on keyword 
     *   **Negative Keywords**: Removes leads matching *any* negative keyword.
     *   **Industries**: Keeps leads matching *at least one* target industry (if provided).
     *   **Website Check**: Removes leads without a valid website/domain (enabled by default, use `--no-require-website` to disable).
-    *   **Email Domain Check**: Only keeps corporate emails that match the company website domain. Removes:
-        *   Generic email providers (Gmail, Yahoo, Outlook, Hotmail, AOL, iCloud, etc.)
-        *   Corporate emails that don't match the company domain
+    *   **Email Domain Check**: Only keeps leads with corporate emails that match the company website domain. **Removes entire lead** if:
+        *   Email is from a generic provider (Gmail, Yahoo, Outlook, Hotmail, AOL, iCloud, etc.)
+        *   Email is from a corporate domain that doesn't match the company website
+        *   Lead has no email address
         *   Examples:
-            *   ❌ CLEAR: `accabins@yahoo.com` (generic provider)
-            *   ❌ CLEAR: `john@gmail.com` (generic provider)
-            *   ✅ KEEP: `contact@company.com` matching `company.com`
-            *   ❌ CLEAR: `john@otherdomain.com` when website is `company.com` (non-matching corporate email)
+            *   ❌ REMOVE LEAD: `accabins@yahoo.com` (generic provider)
+            *   ❌ REMOVE LEAD: `john@gmail.com` (generic provider)
+            *   ✅ KEEP LEAD: `contact@company.com` matching `company.com`
+            *   ❌ REMOVE LEAD: `john@otherdomain.com` when website is `company.com` (non-matching corporate email)
+            *   ❌ REMOVE LEAD: No email address
+    *   **Deduplication**: Removes duplicate leads based on email address. If multiple leads have the same email, only the first occurrence is kept.
 4.  **Validate Websites**: After filtering, validates all remaining websites in parallel:
     *   Makes HTTP requests to check availability
     *   Detects SSL certificate errors
