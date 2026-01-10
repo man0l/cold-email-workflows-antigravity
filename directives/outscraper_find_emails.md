@@ -60,6 +60,15 @@ Find email addresses, phone numbers, and social media contacts for leads by doma
 > - **ALWAYS save a temporary JSON backup** to `.tmp/` before attempting Google Sheets upload
 > - This prevents data loss if Google Sheets API fails (permissions, rate limits, etc.)
 
+> [!NOTE]
+> **CHECKPOINT & RESUME SYSTEM**
+> - **Automatic checkpoints**: Progress is saved every 10 leads to a checkpoint file
+> - **Resume on restart**: If the script stops/crashes, you'll be prompted to resume from checkpoint
+> - **User choice**: When checkpoint exists, you can choose to resume or start fresh
+> - **Automatic cleanup**: Checkpoint file is automatically deleted after successful completion
+> - **Kept on failure**: If Google Sheets upload fails, checkpoint is kept for retry
+> - **Checkpoint location**: `<output_file>_checkpoint.json` or `.tmp/outscraper_checkpoint.json`
+
 ## Instructions
 
 ### Option 1: Enrich from JSON → New JSON
@@ -296,6 +305,33 @@ Outscraper finds contact information from:
 - Public business directories
 - Other publicly accessible sources
 
+## Checkpoint Resume Workflow
+
+When the script encounters an existing checkpoint, the following happens:
+
+1. **Checkpoint Detection**: Script checks for checkpoint file on startup
+2. **User Prompt**: If checkpoint found, displays:
+   ```
+   🔄 CHECKPOINT FOUND
+   Previous run was interrupted
+   Progress: 250/500 leads processed (50%)
+   Checkpoint file: .tmp/enriched_checkpoint.json
+
+   Do you want to resume from checkpoint? (yes/no):
+   ```
+3. **Resume (yes)**: Loads previously enriched leads and continues from where it stopped
+4. **Start Fresh (no)**: Ignores checkpoint and starts from beginning (checkpoint will be overwritten)
+5. **On Completion**: Checkpoint file is automatically deleted after successful save
+6. **On Failure**: If Google Sheets upload fails, checkpoint is kept for retry
+
+**Example scenario:**
+- You start processing 5,000 leads
+- Script crashes after 2,500 leads (cost: ~$7.50)
+- You restart the script
+- Choose "yes" to resume
+- Script processes remaining 2,500 leads (additional cost: ~$7.50)
+- Total cost: $15 (no duplicate processing)
+
 ## Troubleshooting
 
 - **Error: OUTSCRAPER_API not found**: Add your API key to the `.env` file
@@ -304,6 +340,7 @@ Outscraper finds contact information from:
 - **Rate limit errors**: The script includes automatic retry with exponential backoff
 - **Permission denied**: User must confirm with "yes" to proceed
 - **Invalid domain**: Check that domains are properly formatted (script will attempt to clean them)
+- **Checkpoint corrupted**: If checkpoint file is corrupted, choose "no" when prompted to start fresh
 
 ## Comparison with AnyMailFinder
 

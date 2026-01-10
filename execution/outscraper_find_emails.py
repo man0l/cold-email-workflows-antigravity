@@ -507,6 +507,57 @@ def save_to_google_sheets(leads: List[Dict[str, Any]], sheet_name: str, source_s
     print(f"   URL: https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit")
 
 
+def check_for_checkpoint(output_file: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Check if a checkpoint file exists and ask user if they want to resume"""
+    checkpoint_file = output_file.replace('.json', '_checkpoint.json') if output_file else '.tmp/outscraper_checkpoint.json'
+
+    if not os.path.exists(checkpoint_file):
+        return None
+
+    try:
+        with open(checkpoint_file, 'r', encoding='utf-8') as f:
+            checkpoint_data = json.load(f)
+
+        completed = checkpoint_data.get('completed_count', 0)
+        total = checkpoint_data.get('total_to_process', 0)
+
+        print("\n" + "=" * 60)
+        print("🔄 CHECKPOINT FOUND")
+        print("=" * 60)
+        print(f"   Previous run was interrupted")
+        print(f"   Progress: {completed}/{total} leads processed ({int(completed/total*100) if total > 0 else 0}%)")
+        print(f"   Checkpoint file: {checkpoint_file}")
+        print("=" * 60)
+
+        while True:
+            response = input("\nDo you want to resume from checkpoint? (yes/no): ").strip().lower()
+            if response in ['yes', 'y']:
+                print("✓ Resuming from checkpoint...")
+                return checkpoint_data
+            elif response in ['no', 'n']:
+                print("✓ Starting fresh (checkpoint will be overwritten)...")
+                return None
+            else:
+                print("Please answer 'yes' or 'no'")
+
+    except Exception as e:
+        print(f"⚠️  Error reading checkpoint: {e}")
+        print("   Starting fresh...")
+        return None
+
+
+def delete_checkpoint(output_file: Optional[str]):
+    """Delete checkpoint file after successful completion"""
+    checkpoint_file = output_file.replace('.json', '_checkpoint.json') if output_file else '.tmp/outscraper_checkpoint.json'
+
+    if os.path.exists(checkpoint_file):
+        try:
+            os.remove(checkpoint_file)
+            print(f"🗑️  Checkpoint deleted: {checkpoint_file}")
+        except Exception as e:
+            print(f"⚠️  Failed to delete checkpoint: {e}")
+
+
 def main():
     parser = argparse.ArgumentParser(description='Enrich leads with Outscraper emails & contacts')
 
@@ -538,26 +589,37 @@ def main():
     # Handle the mutually exclusive group logic
     skip_existing_emails = not args.process_all
 
-    # Load leads
-    print("📂 Loading leads...")
-    source_spreadsheet_id = None
-    if args.source_file:
-        leads = load_from_json(args.source_file)
-        print(f"✓ Loaded {len(leads)} leads from {args.source_file}")
+    # Check for existing checkpoint
+    checkpoint_data = check_for_checkpoint(args.output)
+
+    if checkpoint_data:
+        # Resume from checkpoint
+        enriched_leads = checkpoint_data.get('enriched_leads', [])
+        stats = checkpoint_data.get('stats', {})
+
+        print(f"✓ Resumed with {len(enriched_leads)} previously enriched leads")
+        print(f"✓ Stats: {stats}")
     else:
-        leads = load_from_google_sheets(args.source_url, args.sheet_name)
-        print(f"✓ Loaded {len(leads)} leads from Google Sheets")
+        # Load leads
+        print("📂 Loading leads...")
+        source_spreadsheet_id = None
+        if args.source_file:
+            leads = load_from_json(args.source_file)
+            print(f"✓ Loaded {len(leads)} leads from {args.source_file}")
+        else:
+            leads = load_from_google_sheets(args.source_url, args.sheet_name)
+            print(f"✓ Loaded {len(leads)} leads from Google Sheets")
 
-        # Extract spreadsheet ID for later use
-        if '/d/' in args.source_url:
-            source_spreadsheet_id = args.source_url.split('/d/')[1].split('/')[0]
+            # Extract spreadsheet ID for later use
+            if '/d/' in args.source_url:
+                source_spreadsheet_id = args.source_url.split('/d/')[1].split('/')[0]
 
-    if not leads:
-        print("❌ No leads found")
-        sys.exit(1)
+        if not leads:
+            print("❌ No leads found")
+            sys.exit(1)
 
-    # Enrich leads
-    enriched_leads, stats = enrich_leads(leads, args.max_leads, args.verbose, args.yes, args.output, skip_existing_emails)
+        # Enrich leads
+        enriched_leads, stats = enrich_leads(leads, args.max_leads, args.verbose, args.yes, args.output, skip_existing_emails)
 
     # Print summary
     print("\n" + "=" * 60)
@@ -573,6 +635,8 @@ def main():
     # Save results
     if args.output:
         save_to_json(enriched_leads, args.output)
+        # Delete checkpoint after successful save
+        delete_checkpoint(args.output)
     else:
         # ALWAYS save temporary backup before attempting Google Sheets upload
         from datetime import datetime
@@ -585,10 +649,13 @@ def main():
         # Now attempt Google Sheets upload
         try:
             save_to_google_sheets(enriched_leads, args.output_sheet, source_spreadsheet_id)
+            # Delete checkpoint after successful upload
+            delete_checkpoint(args.output)
         except Exception as e:
             print(f"\n⚠️  Google Sheets upload failed: {e}")
             print(f"✅ Data is safe in backup file: {backup_path}")
             print(f"   You can manually upload or retry later.")
+            print(f"⚠️  Checkpoint file kept for potential resume")
 
 
 if __name__ == '__main__':
