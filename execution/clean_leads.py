@@ -344,7 +344,7 @@ def verify_email_match(lead: Dict[str, Any]) -> bool:
 
     # Get email
     email = None
-    for field in ['email', 'emailAddress', 'contact_email', 'workEmail', 'Email']:
+    for field in ['email', 'emailAddress', 'contact_email', 'workEmail', 'Email', 'primary email', 'primary_email']:
         if lead.get(field):
             email = lead.get(field)
             break
@@ -462,14 +462,14 @@ def clean_leads(
         # Filter 5: Check email domain match (reject lead if email invalid/generic/mismatched)
         if not verify_email_match(lead):
             if verbose:
-                email = lead.get('email') or lead.get('emailAddress') or lead.get('Email') or 'N/A'
+                email = lead.get('email') or lead.get('emailAddress') or lead.get('Email') or lead.get('primary email') or lead.get('primary_email') or 'N/A'
                 print(f"FILTERED (email): {company_name} - {email}")
             continue
 
         stats['after_email_check'] += 1
 
         # Filter 6: Deduplication - check if we've seen this email before
-        email = lead.get('email') or lead.get('emailAddress') or lead.get('Email')
+        email = lead.get('email') or lead.get('emailAddress') or lead.get('Email') or lead.get('primary email') or lead.get('primary_email')
         if email:
             email_normalized = str(email).lower().strip()
             if email_normalized in seen_emails:

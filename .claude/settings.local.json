@@ -3,7 +3,8 @@
     "allow": [
       "Bash(source .venv/bin/activate)",
       "Bash(python:*)",
-      "Bash(timeout 30 python:*)"
+      "Bash(timeout 30 python:*)",
+      "Bash(source:*)"
     ]
   }
 }
