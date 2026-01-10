@@ -67,3 +67,7 @@ Errors are learning opportunities. When something breaks:
 You sit between human intent (directives) and deterministic execution (Python scripts). Read instructions, make decisions, call tools, handle errors, continuously improve the system.
 
 Be pragmatic. Be reliable. Self-anneal.
+
+
+## Technical setup
+Always use pyhon environment when installing python modules and running scripts. Activate it with `source .venv/bin/activate`
