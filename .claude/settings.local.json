@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(source .venv/bin/activate)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(timeout 30 python:*)"
     ]
   }
 }
